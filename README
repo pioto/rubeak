@@ -1,0 +1,36 @@
+RubEAK
+
+A ruby client-server package for handling events from a media keyboard, IR
+remote, etc.
+
+By: Mike Kelly <pioto@pioto.org>
+
+Basic Usage:
+
+First, if you don't have an ir remote, you should edit the configuration section
+at the top if the rubeak.rb script.
+
+Run the rubeak.rb script in the background when you start your window manager.
+For example, if you're runing Fluxbox, add the following to your
+~/.fluxbox/startup file:
+
+  # Start rubeak server
+  /home/pioto/svn/rubeak/rubeak.rb &
+
+Then, for whatever keys you want to bind to certain actions, run the
+rubeak-client.rb script. Again, for Fluxbox, add this to your ~/.fluxbox/keys
+file (after making sure that your media keys are mapped as such):
+
+  XF86AudioPlay :ExecCommand rubeak-client 'play-pause'
+  XF86AudioStop :ExecCommand rubeak-client 'stop'
+  XF86AudioPrev :ExecCommand rubeak-client 'prev'
+  XF86AudioNext :ExecCommand rubeak-client 'next'
+ 
+  XF86AudioMute :ExecCommand rubeak-client 'mute'
+  XF86AudioLowerVolume :ExecCommand rubeak-client 'vol-'
+  XF86AudioRaiseVolume :ExecCommand rubeak-client 'vol+'
+
+And that's about it. The default settings will control mpd, adjust your volume
+with amixer, and turn on / off your monitor with the 'power' button. If you want
+to change that, you'll need to modify the doaction function. Later on I'll work
+on making it more configurable w/o modifying the source code.
