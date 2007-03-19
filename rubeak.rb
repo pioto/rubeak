@@ -13,6 +13,7 @@ $colors = {
 	'unmuted' => 'green',
 	'mute' => 'red',
 }
+$use_ir_remote=true
 
 class Rubeak
 	def initialize
@@ -159,6 +160,6 @@ rubeak = Rubeak.new
 puts ">>> Starting DRb server on port #$port..."
 dserv = DRb.start_service("druby://localhost:#$port",rubeak)
 
-rubeak.readir
+rubeak.readir if $use_ir_remote
 
 dserv.thread.join
