@@ -1,0 +1,8 @@
+Allow configuring options and actions w/o modifying the source code.
+
+Proper error handling in lots of places (right now we just die sloppily in lots
+of cases).
+
+Add a Makefile or some such thing for making installing easier.
+
+Test cases?
