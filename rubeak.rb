@@ -160,3 +160,5 @@ puts ">>> Starting DRb server on port #$port..."
 dserv = DRb.start_service("druby://localhost:#$port",rubeak)
 
 rubeak.readir
+
+dserv.thread.join
