@@ -8,12 +8,25 @@ require 'drb'
 
 include XOSD
 
+# Configuration:
+
+# The port to run the DRb server on. If you change this, be sure to change it in rubeak-client.rb as
+# well.
 $port = 7654
+
+# The colors used when the volume is muted or unmuted.
 $colors = {
 	'unmuted' => 'green',
 	'mute' => 'red',
 }
-$use_ir_remote=true
+
+# The path to the hid_read program, from the creative_rm1500_usb package, available at
+# http://ecto.teftin.net/rm1500.html
+#
+# If you don't have this remote (chances are you don't), comment this line out, and uncomment the
+# other one:
+$hid_read_path="#{ENV['HOME']}/src/creative_rm1500_usb-0.1/hid_read"
+#$hid_read_path=nil
 
 class Rubeak
 	def initialize
@@ -143,8 +156,9 @@ class Rubeak
 	# Reads in data from the hid_read program. this is one of 2 possible sources of commands,
 	# the other being DRb
 	def readir
+		return if $hid_read_path == nil
 		puts '>>> Reading IR data from hid_read...'
-		hid_read = IO::popen("#{ENV['HOME']}/src/creative_rm1500_usb-0.1/hid_read")
+		hid_read = IO::popen($hid_read_path)
 
 		hid_read.each do |l|
 			md = l.match ' \+ got key\(..\): (.*)'
@@ -160,6 +174,6 @@ rubeak = Rubeak.new
 puts ">>> Starting DRb server on port #$port..."
 dserv = DRb.start_service("druby://localhost:#$port",rubeak)
 
-rubeak.readir if $use_ir_remote
+rubeak.readir
 
 dserv.thread.join
