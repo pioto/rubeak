@@ -1,5 +1,5 @@
 #!/usr/bin/env ruby
-# vim set tw=100 :
+# vim: set tw=100 :
 
 require 'drb'
 

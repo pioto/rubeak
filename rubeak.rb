@@ -1,9 +1,10 @@
 #!/usr/bin/env ruby
-# vim set tw=100 :
+# vim: set tw=100 :
 
 require 'xosd_bar'
 require 'xosd'
 require 'thread'
+require 'socket'
 require 'drb'
 
 include XOSD
@@ -19,6 +20,7 @@ $colors = {
 	'unmuted' => 'green',
 	'mute' => 'red',
 }
+$media_modes = [ 'mpd', 'lastfm' ]
 
 # The path to the hid_read program, from the creative_rm1500_usb package, available at
 # http://ecto.teftin.net/rm1500.html
@@ -30,21 +32,30 @@ $hid_read_path="#{ENV['HOME']}/src/creative_rm1500_usb-0.1/hid_read"
 
 class Rubeak
 	def initialize
-		@osdbar = XosdBar.new
-		@osdbar.position=BOTTOM
-		@osdbar.vertical_offset=100
-		@osdbar.align=CENTER
-		@osdbar.font="-*-fixed-*-*-*-*-18-*-*-*-*-*-*-*"
-		@osdbar.outline_offset=1
-		@osdbar.outline_color='black'
+		@volumebar = XosdBar.new
+		@volumebar.position=BOTTOM
+		@volumebar.vertical_offset=100
+		@volumebar.align=CENTER
+		@volumebar.font="-*-fixed-*-*-*-*-18-*-*-*-*-*-*-*"
+		@volumebar.outline_offset=1
+		@volumebar.outline_color='black'
 
-		@osd = Xosd.new(3)
-		@osd.position=MIDDLE
-		@osd.align=CENTER
-		@osd.font="-*-fixed-*-*-*-*-18-*-*-*-*-*-*-*"
-		@osd.outline_offset=1
-		@osd.outline_color='black'
+		@mpdosd = Xosd.new(3)
+		@mpdosd.position=MIDDLE
+		@mpdosd.align=CENTER
+		@mpdosd.font="-*-fixed-*-*-*-*-18-*-*-*-*-*-*-*"
+		@mpdosd.outline_offset=1
+		@mpdosd.outline_color='black'
 
+		@statusosd = Xosd.new(1)
+		@statusosd.position=TOP
+		@statusosd.vertical_offset=100
+		@statusosd.align=CENTER
+		@statusosd.font="-*-fixed-*-*-*-*-18-*-*-*-*-*-*-*"
+		@statusosd.outline_offset=1
+		@statusosd.outline_color='black'
+
+		@media_mode=$media_modes[0]
 	end
 
 	# Gets the current volume from alsa
@@ -66,31 +77,55 @@ class Rubeak
 	def showvol
 		vm = getvol
 		if vm['mute']
-			@osdbar.color=$colors['mute']
-			@osdbar.title='Volume (Muted)'
+			@volumebar.color=$colors['mute']
+			@volumebar.title='Volume (Muted)'
 		else
-			@osdbar.color=$colors['unmuted']
-			@osdbar.title='Volume'
+			@volumebar.color=$colors['unmuted']
+			@volumebar.title='Volume'
 		end
 
-		@osdbar.value=vm['vol']
-		@osdbar.timeout=5
+		@volumebar.value=vm['vol']
+		@volumebar.timeout=5
 	end
 
 	# show the output of the mpc command (our current mucic state)
-	def showmpc
+	def show_mpd
 		mpc = IO::popen("mpc")
 		line=0
 		mpc.each do |l| 
-			@osd.display_message(line,l.chomp)
+			@mpdosd.display_message(line,l.chomp)
 			line=line+1
 		end
-		@osd.timeout=5
+		@mpdosd.timeout=5
+	end
+
+	# Send the given command to the shell-fm process. Returns nil if no response is given.
+	def send_lastfm(cmd)
+		answer=nil
+		begin
+			t = TCPSocket.new('127.0.0.1', 54311)
+			t.print "#{cmd}\n"
+			answer=t.gets(nil)
+			puts "LASTFM: #{answer}"
+			t.close
+		rescue
+		end
+		return answer
+	end
+
+	def show_lastfm
+		answer=send_lastfm "info Now Playing: %a - %t [%A]"
+		answer = "Not playing." if answer == nil
+		@mpdosd.display_message(0,"")
+		@mpdosd.display_message(1,answer.chomp)
+		@mpdosd.display_message(2,"")
+		@mpdosd.timeout=5
 	end
 
 	# Does magic stuff for the given action
 	def doaction (key)
 		case key
+		# Volume Control
 		when 'mute'
 			vm = getvol
 			if vm['mute']
@@ -115,26 +150,56 @@ class Rubeak
 			end
 			system("amixer sset Master #{vol}% &>/dev/null")
 			showvol
-		when 'play-pause'
-			mpc = IO::popen("mpc")
-			mpc.each do |x|
-				/^\[/.match(x) or next
-				if /\[playing\]/.match(x)
-					system("mpc pause &>/dev/null")
-				else
-					system("mpc play &>/dev/null")
+		# Media Player control
+		when 'play-pause', 'play', 'pause'
+			case @media_mode
+			when 'mpd'
+				mpc = IO::popen("mpc")
+				mpc.each do |x|
+					/^\[/.match(x) or next
+					if /\[playing\]/.match(x)
+						system("mpc pause &>/dev/null")
+						show_mpd
+						return
+					end
 				end
+				system("mpc play &>/dev/null")
+				show_mpd
+			when 'lastfm'
 			end
-			showmpc
+		when 'rec'
+			case @media_mode
+			when 'lastfm'
+				send_lastfm "love"
+				@statusosd.display_message(0,"Current lastfm track loved.")
+				@statusosd.timeout=5
+			end
 		when 'prev'
-			system("mpc prev &>/dev/null")
-			showmpc
+			case @media_mode
+			when 'mpd'
+				system("mpc prev &>/dev/null")
+				show_mpd
+			when 'lastfm'
+			end
 		when 'next'
-			system("mpc next &>/dev/null")
-			showmpc
-		when 'stop'
-			system("mpc stop &>/dev/null")
-			showmpc
+			case @media_mode
+			when 'mpd'
+				system("mpc next &>/dev/null")
+				show_mpd
+			when 'lastfm'
+				send_lastfm "skip"
+				@statusosd.display_message(0,"Skipping current lastfm track...")
+				@statusosd.timeout=5
+			end
+		when 'stop-eject', 'stop'
+			case @media_mode
+			when 'mpd'
+				system("mpc stop &>/dev/null")
+				show_mpd
+			when 'lastfm'
+				#send_lastfm "stop"
+			end
+		# Misc
 		when 'power'
 			xset = IO::popen("xset -q")
 			xset.each do |x|
@@ -146,8 +211,21 @@ class Rubeak
 				end
 			end
 		when 'display'
-			showmpc
 			showvol
+			case @media_mode
+			when 'mpd'
+				show_mpd
+			when 'lastfm'
+				show_lastfm
+			end
+		when 'options'
+			mode_index = $media_modes.index(@media_mode)+1
+			if mode_index >= $media_modes.size
+				mode_index=0
+			end
+			@media_mode=$media_modes[mode_index]
+			@statusosd.display_message(0,"Media mode now: #@media_mode")
+			@statusosd.timeout=5
 		else
 			puts "!!! Unknown action: '#{key}'"
 		end
@@ -177,3 +255,4 @@ dserv = DRb.start_service("druby://localhost:#$port",rubeak)
 rubeak.readir
 
 dserv.thread.join
+dserv.stop_service
