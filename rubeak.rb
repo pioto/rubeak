@@ -135,20 +135,10 @@ class Rubeak
 			end
 			showvol
 		when 'vol+'
-			vm = getvol
-			vol=vm['vol'] + 5
-			if vol > 100
-				vol = 100
-			end
-			system("amixer sset Master #{vol}% &>/dev/null")
+			system("amixer sset Master 1+ &>/dev/null")
 			showvol
 		when 'vol-'
-			vm = getvol
-			vol=vm['vol'] - 5
-			if vol < 0
-				vol = 0
-			end
-			system("amixer sset Master #{vol}% &>/dev/null")
+			system("amixer sset Master 1- &>/dev/null")
 			showvol
 		# Media Player control
 		when 'play-pause', 'play', 'pause'
