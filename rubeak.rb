@@ -156,8 +156,11 @@ class Rubeak
 				system("mpc play &>/dev/null")
 				show_mpd
 			when 'lastfm'
+				send_lastfm "pause"
+				@statusosd.display_message(0,"Pausing/resuming lastfm.")
+				@statusosd.timeout=5
 			end
-		when 'rec'
+		when 'rec', 'favorite'
 			case @media_mode
 			when 'lastfm'
 				send_lastfm "love"
@@ -208,7 +211,7 @@ class Rubeak
 			when 'lastfm'
 				show_lastfm
 			end
-		when 'options'
+		when 'options', 'mode'
 			mode_index = $media_modes.index(@media_mode)+1
 			if mode_index >= $media_modes.size
 				mode_index=0
