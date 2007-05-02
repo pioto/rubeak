@@ -110,6 +110,7 @@ class Rubeak
 			t.close
 		rescue
 		end
+		answer=nil if /(null)/.match(answer)
 		return answer
 	end
 
@@ -156,9 +157,21 @@ class Rubeak
 				system("mpc play &>/dev/null")
 				show_mpd
 			when 'lastfm'
-				send_lastfm "pause"
-				@statusosd.display_message(0,"Pausing/resuming lastfm.")
-				@statusosd.timeout=5
+				i=send_lastfm "info %u"
+				if i == nil
+					last_track=""
+					File.open("#{ENV['HOME']}/.shell-fm/radio-history") \
+						{ |f| last_track=f.to_a[-1] }
+					send_lastfm "play lastfm://#{last_track}"
+					@statusosd.display_message(0,
+						"Playing last played track...")
+					@statusosd.timeout=5
+				else
+					send_lastfm "pause"
+					@statusosd.display_message(0,
+						"Pausing/resuming lastfm...")
+					@statusosd.timeout=5
+				end
 			end
 		when 'rec', 'favorite'
 			case @media_mode
@@ -190,7 +203,9 @@ class Rubeak
 				system("mpc stop &>/dev/null")
 				show_mpd
 			when 'lastfm'
-				#send_lastfm "stop"
+				send_lastfm "stop"
+				@statusosd.display_message(0,"Stopping lastfm play...")
+				@statusosd.timeout=5
 			end
 		# Misc
 		when 'power'
@@ -205,6 +220,8 @@ class Rubeak
 			end
 		when 'display'
 			showvol
+			@statusosd.display_message(0,"Current Time: #{`date`.chomp}")
+			@statusosd.timeout=5
 			case @media_mode
 			when 'mpd'
 				show_mpd
