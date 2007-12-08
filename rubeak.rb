@@ -36,14 +36,14 @@ class Rubeak
 		@volumebar.position=BOTTOM
 		@volumebar.vertical_offset=100
 		@volumebar.align=CENTER
-		@volumebar.font="-*-fixed-*-*-*-*-18-*-*-*-*-*-*-*"
+		@volumebar.font="-*-*-*-r-*-*-24-*-*-*-*-*-*-*"
 		@volumebar.outline_offset=1
 		@volumebar.outline_color='black'
 
 		@mpdosd = Xosd.new(3)
 		@mpdosd.position=MIDDLE
 		@mpdosd.align=CENTER
-		@mpdosd.font="-*-fixed-*-*-*-*-18-*-*-*-*-*-*-*"
+		@mpdosd.font="-*-*-*-r-*-*-24-*-*-*-*-*-*-*"
 		@mpdosd.outline_offset=1
 		@mpdosd.outline_color='black'
 
@@ -51,7 +51,7 @@ class Rubeak
 		@statusosd.position=TOP
 		@statusosd.vertical_offset=100
 		@statusosd.align=CENTER
-		@statusosd.font="-*-fixed-*-*-*-*-18-*-*-*-*-*-*-*"
+		@statusosd.font="-*-*-*-r-*-*-24-*-*-*-*-*-*-*"
 		@statusosd.outline_offset=1
 		@statusosd.outline_color='black'
 
@@ -115,8 +115,8 @@ class Rubeak
 	end
 
 	def show_lastfm
-		answer=send_lastfm "info Now Playing: %a - %t [%A]"
-		answer = "Not playing." if answer == nil
+		answer=send_lastfm "info Now Playing: %a - %t [%l]"
+		answer = "Not playing." if answer.nil?
 		@mpdosd.display_message(0,"")
 		@mpdosd.display_message(1,answer.chomp)
 		@mpdosd.display_message(2,"")
@@ -158,7 +158,7 @@ class Rubeak
 				show_mpd
 			when 'lastfm'
 				i=send_lastfm "info %u"
-				if i == nil
+				if i.nil?
 					last_track=""
 					File.open("#{ENV['HOME']}/.shell-fm/radio-history") \
 						{ |f| last_track=f.to_a[-1] }
