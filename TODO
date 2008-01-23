@@ -10,5 +10,3 @@ of cases).
 Add a Makefile or some such thing for making installing easier.
 
 Test cases?
-
-Fix memory leaks/dead processes piling up

@@ -17,8 +17,8 @@ $port = 7654
 
 # The colors used when the volume is muted or unmuted.
 $colors = {
-	'unmuted' => 'green',
-	'mute' => 'red',
+	:unmuted => 'green',
+	:mute => 'red',
 }
 $media_modes = [ 'mpd', 'lastfm' ]
 
@@ -62,41 +62,40 @@ class Rubeak
 
 	# Gets the current volume from alsa
 	def getvol
-		f = IO::popen('amixer sget Master')
-		vol=-1
-		mute=false
-		line=''
-		f.readlines.each { |l| line = l if l.match '^  Front Left' }
-		if line.match '\[off\]$'
-			mute=true
+		IO::popen('amixer sget Master') do |f|
+			f.read.scan(/Front Left.*?\[(\d+)%\].*?\[(on|off)\]\n/) do |pc, on_or_off|
+				return {
+					:vol => pc.to_i,
+					:mute => 'off' == on_or_off
+				}
+			end
 		end
-		md = line.match '\[(\d*)%\]'
-		vol=md.to_a[1].to_i if md
-		return { 'vol' => vol, 'mute' => mute }
+		return { :vol => -1, :mute => false }
 	end
 
 	# Shows the current volume w/ xosd.
 	def showvol
 		vm = getvol
-		if vm['mute']
-			@volumebar.color=$colors['mute']
+		if vm[:mute]
+			@volumebar.color=$colors[:mute]
 			@volumebar.title='Volume (Muted)'
 		else
-			@volumebar.color=$colors['unmuted']
+			@volumebar.color=$colors[:unmuted]
 			@volumebar.title='Volume'
 		end
 
-		@volumebar.value=vm['vol']
+		@volumebar.value=vm[:vol]
 		@volumebar.timeout=5
 	end
 
 	# show the output of the mpc command (our current mucic state)
 	def show_mpd
-		mpc = IO::popen("mpc")
-		line=0
-		mpc.each do |l| 
-			@mpdosd.display_message(line,l.chomp)
-			line=line+1
+		IO::popen("mpc") do |mpc|
+			line=0
+			mpc.each do |l| 
+				@mpdosd.display_message(line,l.chomp)
+				line=line+1
+			end
 		end
 		@mpdosd.timeout=5
 	end
@@ -105,11 +104,11 @@ class Rubeak
 	def send_lastfm(cmd)
 		answer=nil
 		begin
-			t = TCPSocket.new('127.0.0.1', 54311)
-			t.print "#{cmd}\n"
-			answer=t.gets(nil)
-			puts "LASTFM: #{answer}"
-			t.close
+			TCPSocket.new('127.0.0.1', 54311) do |t|
+				t.print "#{cmd}\n"
+				answer=t.gets(nil)
+				puts "LASTFM: #{answer}"
+			end
 		rescue
 		end
 		answer=nil if /(null)/.match(answer)
@@ -132,7 +131,7 @@ class Rubeak
 			# Volume Control
 			when 'mute'
 				vm = getvol
-				if vm['mute']
+				if vm[:mute]
 					system('amixer sset Master unmute &>/dev/null')
 				else
 					system('amixer sset Master mute &>/dev/null')
@@ -148,13 +147,14 @@ class Rubeak
 			when 'play-pause', 'play', 'pause'
 				case @media_mode
 				when 'mpd'
-					mpc = IO::popen("mpc")
-					mpc.each do |x|
-						/^\[/.match(x) or next
-						if /\[playing\]/.match(x)
-							system("mpc pause &>/dev/null")
-							show_mpd
-							return
+					IO::popen("mpc") do |mpc|
+						mpc.each do |x|
+							/^\[/.match(x) or next
+							if /\[playing\]/.match(x)
+								system("mpc pause &>/dev/null")
+								show_mpd
+								return
+							end
 						end
 					end
 					system("mpc play &>/dev/null")
@@ -212,13 +212,14 @@ class Rubeak
 				end
 			# Misc
 			when 'power'
-				xset = IO::popen("xset -q")
-				xset.each do |x|
-					/Monitor/.match(x) or next
-					if /Off/.match(x)
-						system("xset dpms force on &>/dev/null")
-					else
-						system("xset dpms force off &>/dev/null")
+				IO::popen("xset -q") do |xset|
+					xset.each do |x|
+						/Monitor/.match(x) or next
+						if /Off/.match(x)
+							system("xset dpms force on &>/dev/null")
+						else
+							system("xset dpms force off &>/dev/null")
+						end
 					end
 				end
 			when 'display'
@@ -250,13 +251,13 @@ class Rubeak
 	def readir
 		return if $hid_read_path == nil
 		puts '>>> Reading IR data from hid_read...'
-		hid_read = IO::popen($hid_read_path)
-
-		hid_read.each do |l|
-			md = l.match ' \+ got key\(..\): (.*)'
-			next if not md
-			key=md.to_a[1]
-			doaction key
+		IO::popen($hid_read_path) do |hid_read|
+			hid_read.each do |l|
+				md = l.match ' \+ got key\(..\): (.*)'
+				next if not md
+				key=md.to_a[1]
+				doaction key
+			end
 		end
 	end
 end
