@@ -27,8 +27,8 @@ $media_modes = [ 'mpd', 'lastfm' ]
 #
 # If you don't have this remote (chances are you don't), comment this line out, and uncomment the
 # other one:
-#$hid_read_path="#{ENV['HOME']}/src/creative_rm1500_usb-0.1/hid_read"
-$hid_read_path=nil
+$hid_read_path="#{ENV['HOME']}/src/creative_rm1500_usb-0.1/hid_read"
+#$hid_read_path=nil
 
 class Rubeak
 	def initialize
