@@ -16,10 +16,7 @@ include XOSD
 $port = 7654
 
 # The colors used when the volume is muted or unmuted.
-$colors = {
-	:unmuted => 'green',
-	:mute => 'red',
-}
+$muted_colors = { true => 'red', false => 'green' }
 $media_modes = [ 'mpd', 'lastfm' ]
 
 # The path to the hid_read program, from the creative_rm1500_usb package, available at
@@ -76,14 +73,9 @@ class Rubeak
 	# Shows the current volume w/ xosd.
 	def showvol
 		vm = getvol
-		if vm[:mute]
-			@volumebar.color=$colors[:mute]
-			@volumebar.title='Volume (Muted)'
-		else
-			@volumebar.color=$colors[:unmuted]
-			@volumebar.title='Volume'
-		end
-
+		@volumebar.color=$muted_colors[vm[:mute]]
+		@volumebar.title='Volume'
+		@volumebar.title += ' (Muted)' if vm[:mute]
 		@volumebar.value=vm[:vol]
 		@volumebar.timeout=5
 	end
@@ -111,12 +103,12 @@ class Rubeak
 			end
 		rescue
 		end
-		answer=nil if /(null)/.match(answer)
+		answer=nil if answer =~ /\(null\)/
 		return answer
 	end
 
 	def show_lastfm
-		answer=send_lastfm "info Now Playing: %a - %t [%l]"
+		answer=send_lastfm("info Now Playing: %a - %t [%l]")
 		answer = "Not playing." if answer.nil?
 		@mpdosd.display_message(0,"")
 		@mpdosd.display_message(1,answer.chomp)
@@ -125,7 +117,7 @@ class Rubeak
 	end
 
 	# Does magic stuff for the given action
-	def doaction (key)
+	def doaction(key)
 		@mutex.synchronize do
 			case key
 			# Volume Control
@@ -149,8 +141,7 @@ class Rubeak
 				when 'mpd'
 					IO::popen("mpc") do |mpc|
 						mpc.each do |x|
-							/^\[/.match(x) or next
-							if /\[playing\]/.match(x)
+							if x =~ /^\[playing\]/
 								system("mpc pause &>/dev/null")
 								show_mpd
 								return
@@ -160,17 +151,17 @@ class Rubeak
 					system("mpc play &>/dev/null")
 					show_mpd
 				when 'lastfm'
-					i=send_lastfm "info %u"
+					i=send_lastfm("info %u")
 					if i.nil?
 						last_track=""
 						File.open("#{ENV['HOME']}/.shell-fm/radio-history") \
 							{ |f| last_track=f.to_a[-1] }
-						send_lastfm "play lastfm://#{last_track}"
+						send_lastfm("play lastfm://#{last_track}")
 						@statusosd.display_message(0,
 							"Playing last played track...")
 						@statusosd.timeout=5
 					else
-						send_lastfm "pause"
+						send_lastfm("pause")
 						@statusosd.display_message(0,
 							"Pausing/resuming lastfm...")
 						@statusosd.timeout=5
@@ -179,7 +170,7 @@ class Rubeak
 			when 'rec', 'favorite'
 				case @media_mode
 				when 'lastfm'
-					send_lastfm "love"
+					send_lastfm("love")
 					@statusosd.display_message(0,"Current lastfm track loved.")
 					@statusosd.timeout=5
 				end
@@ -213,11 +204,13 @@ class Rubeak
 			# Misc
 			when 'power'
 				IO::popen("xset -q") do |xset|
-					xset.each do |x|
-						/Monitor/.match(x) or next
-						if /Off/.match(x)
+					xset.read.scan(/Monitor is (On|Off)/) do |mon_on_off|
+						# TODO: Figure out why this never matches
+						if 'Off' == mon_on_off
+							puts ">> Turning on Monitor (#{mon_on_off})"
 							system("xset dpms force on &>/dev/null")
 						else
+							puts ">> Turning off Monitor (#{mon_on_off})"
 							system("xset dpms force off &>/dev/null")
 						end
 					end
@@ -252,10 +245,15 @@ class Rubeak
 		return if $hid_read_path == nil
 		puts '>>> Reading IR data from hid_read...'
 		IO::popen($hid_read_path) do |hid_read|
+			# TODO: use read.scan here
+			#hid_read.read.scan(/ \+ got key\(..\): (.*)\n/) do |key|
+			#	puts "Got Key: " + key
+			#	doaction(key)
 			hid_read.each do |l|
 				md = l.match ' \+ got key\(..\): (.*)'
 				next if not md
 				key=md.to_a[1]
+				puts "Got Key " + key
 				doaction key
 			end
 		end
