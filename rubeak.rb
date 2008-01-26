@@ -6,6 +6,8 @@ require 'xosd'
 require 'thread'
 require 'socket'
 require 'drb'
+require 'librmpd'
+require 'lirc'
 
 include XOSD
 
@@ -17,18 +19,12 @@ $port = 7654
 
 # The colors used when the volume is muted or unmuted.
 $muted_colors = { true => 'red', false => 'green' }
-$media_modes = [ 'mpd', 'lastfm' ]
-
-# The path to the hid_read program, from the creative_rm1500_usb package, available at
-# http://ecto.teftin.net/rm1500.html
-#
-# If you don't have this remote (chances are you don't), comment this line out, and uncomment the
-# other one:
-$hid_read_path="#{ENV['HOME']}/src/creative_rm1500_usb-0.1/hid_read"
-#$hid_read_path=nil
+$media_modes = [ 'mpd', 'lastfm', 'lirc' ]
 
 class Rubeak
 	def initialize
+		@mpd = MPD.new
+
 		@volumebar = XosdBar.new
 		@volumebar.position=BOTTOM
 		@volumebar.vertical_offset=100
@@ -58,7 +54,7 @@ class Rubeak
 	end
 
 	# Gets the current volume from alsa
-	def getvol
+	def get_vol
 		IO::popen('amixer sget Master') do |f|
 			f.read.scan(/Front Left.*?\[(\d+)%\].*?\[(on|off)\]\n/) do |pc, on_or_off|
 				return {
@@ -71,8 +67,8 @@ class Rubeak
 	end
 
 	# Shows the current volume w/ xosd.
-	def showvol
-		vm = getvol
+	def show_vol()
+		vm = get_vol
 		@volumebar.color=$muted_colors[vm[:mute]]
 		@volumebar.title='Volume'
 		@volumebar.title += ' (Muted)' if vm[:mute]
@@ -81,14 +77,21 @@ class Rubeak
 	end
 
 	# show the output of the mpc command (our current mucic state)
-	def show_mpd
-		IO::popen("mpc") do |mpc|
-			line=0
-			mpc.each do |l| 
-				@mpdosd.display_message(line,l.chomp)
-				line=line+1
-			end
+	def show_mpd()
+		@mpd.connect unless @mpd.connected?
+		song = @mpd.current_song
+		@mpdosd.display_message(0, "#{song['artist']} - #{song['title']}")
+		@mpdosd.display_message(1, "[#{song['album']}]")
+		statemsg = ''
+		case @mpd.status['state']
+		when 'pause'
+			statemsg = 'Paused'
+		when 'play'
+			statemsg = 'Playing'
+		when 'stop'
+			statemsg = 'Stopped'
 		end
+		@mpdosd.display_message(2, "#{statemsg}")
 		@mpdosd.timeout=5
 	end
 
@@ -107,7 +110,7 @@ class Rubeak
 		return answer
 	end
 
-	def show_lastfm
+	def show_lastfm()
 		answer=send_lastfm("info Now Playing: %a - %t [%l]")
 		answer = "Not playing." if answer.nil?
 		@mpdosd.display_message(0,"")
@@ -117,38 +120,34 @@ class Rubeak
 	end
 
 	# Does magic stuff for the given action
-	def doaction(key)
+	def do_action(key)
 		@mutex.synchronize do
 			case key
 			# Volume Control
 			when 'mute'
-				vm = getvol
+				vm = get_vol
 				if vm[:mute]
 					system('amixer sset Master unmute &>/dev/null')
 				else
 					system('amixer sset Master mute &>/dev/null')
 				end
-				showvol
+				show_vol
 			when 'vol+'
 				system("amixer sset Master 1+ &>/dev/null")
-				showvol
+				show_vol
 			when 'vol-'
 				system("amixer sset Master 1- &>/dev/null")
-				showvol
+				show_vol
 			# Media Player control
 			when 'play-pause', 'play', 'pause'
 				case @media_mode
 				when 'mpd'
-					IO::popen("mpc") do |mpc|
-						mpc.each do |x|
-							if x =~ /^\[playing\]/
-								system("mpc pause &>/dev/null")
-								show_mpd
-								return
-							end
-						end
+					@mpd.connect unless @mpd.connected?
+					unless @mpd.playing?
+						@mpd.play
+					else
+						@mpd.pause=true
 					end
-					system("mpc play &>/dev/null")
 					show_mpd
 				when 'lastfm'
 					i=send_lastfm("info %u")
@@ -177,14 +176,16 @@ class Rubeak
 			when 'prev'
 				case @media_mode
 				when 'mpd'
-					system("mpc prev &>/dev/null")
+					@mpd.connect unless @mpd.connected?
+					@mpd.previous
 					show_mpd
 				when 'lastfm'
 				end
 			when 'next'
 				case @media_mode
 				when 'mpd'
-					system("mpc next &>/dev/null")
+					@mpd.connect unless @mpd.connected?
+					@mpd.next
 					show_mpd
 				when 'lastfm'
 					send_lastfm "skip"
@@ -194,7 +195,8 @@ class Rubeak
 			when 'stop-eject', 'stop'
 				case @media_mode
 				when 'mpd'
-					system("mpc stop &>/dev/null")
+					@mpd.connect unless @mpd.connected?
+					@mpd.stop
 					show_mpd
 				when 'lastfm'
 					send_lastfm "stop"
@@ -205,18 +207,16 @@ class Rubeak
 			when 'power'
 				IO::popen("xset -q") do |xset|
 					xset.read.scan(/Monitor is (On|Off)/) do |mon_on_off|
-						# TODO: Figure out why this never matches
-						if 'Off' == mon_on_off
-							puts ">> Turning on Monitor (#{mon_on_off})"
+						if 'Off' == mon_on_off.to_s
 							system("xset dpms force on &>/dev/null")
 						else
-							puts ">> Turning off Monitor (#{mon_on_off})"
 							system("xset dpms force off &>/dev/null")
 						end
 					end
 				end
 			when 'display'
-				showvol
+				return if @media_mode == 'lirc'
+				show_vol
 				@statusosd.display_message(0,"Current Time: #{`date`.chomp}")
 				@statusosd.timeout=5
 				case @media_mode
@@ -239,23 +239,13 @@ class Rubeak
 		end
 	end
 
-	# Reads in data from the hid_read program. this is one of 2 possible sources of commands,
-	# the other being DRb
+	# Reads in data from lirc. this is one of 2 possible sources of
+	# commands, the other being DRb
 	def readir
-		return if $hid_read_path == nil
-		puts '>>> Reading IR data from hid_read...'
-		IO::popen($hid_read_path) do |hid_read|
-			# TODO: use read.scan here
-			#hid_read.read.scan(/ \+ got key\(..\): (.*)\n/) do |key|
-			#	puts "Got Key: " + key
-			#	doaction(key)
-			hid_read.each do |l|
-				md = l.match ' \+ got key\(..\): (.*)'
-				next if not md
-				key=md.to_a[1]
-				puts "Got Key " + key
-				doaction key
-			end
+		puts '>>> Reading IR data from lirc...'
+		lirc = LIRC::Client.new
+		while true
+			do_action(lirc.next.name)
 		end
 	end
 end

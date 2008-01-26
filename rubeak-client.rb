@@ -11,11 +11,11 @@ rubeak = DRbObject.new(nil, "druby://localhost:#$port")
 if ARGV.empty?
 	while line = gets do
 		puts "Sending action: #{line}"
-		rubeak.doaction line.chomp
+		rubeak.do_action line.chomp
 	end
 else
 	ARGV.each do |key|
 		puts "Sending action: #{key}"
-		rubeak.doaction key
+		rubeak.do_action key
 	end
 end
